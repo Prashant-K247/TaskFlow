@@ -1,261 +1,308 @@
 import React, { useState } from "react";
-import {
-  DragDropContext,
-  Droppable,
-  Draggable
-} from "@hello-pangea/dnd";
+import { DndContext, closestCenter, DragOverlay } from "@dnd-kit/core";
+import { arrayMove, SortableContext, rectSortingStrategy } from "@dnd-kit/sortable";
+import { SortableItem } from "./SortableItem.jsx";
+import { v4 as uuidv4 } from "uuid";
+import { useDroppable } from "@dnd-kit/core";
 
-const initialColumns = {
-  todo: {
-    name: "Planned🗒️",
-    items: [
-      { id: "1", title: "Assignment 1", description: "due date - 1aug" },
-      { id: "2", title: "Assignment 2", description: "due date - 5aug" },
-    ],
-  },
-  doing: { name: "Ongoing", items: [] },
-  done: { name: "Finished!🎯", items: [] },
+const COLUMN_COLORS = {
+  todo: "bg-gray-500",
+  inProgress: "bg-yellow-500",
+  done: "bg-green-500",
+};
+const COLUMN_NAMES = {
+  todo: "To Do",
+  inProgress: "In Progress",
+  done: "Done",
 };
 
-function App() {
-  const [columns, setColumns] = useState(initialColumns);
-  const [showModal, setShowModal] = useState(false);
-  const [newTask, setNewTask] = useState({ title: "", description: "" });
-  const [editingTask, setEditingTask] = useState(null); // { columnId, taskId }
-  const [editingValues, setEditingValues] = useState({ title: "", description: "" });
-
-  const onDragEnd = (result) => {
-    const { source, destination } = result;
-    if (!destination) return;
-    if (source.droppableId === destination.droppableId && source.index === destination.index) return;
-
-    const sourceCol = columns[source.droppableId];
-    const destCol = columns[destination.droppableId];
-
-    const sourceItems = Array.from(sourceCol.items);
-    const destItems = Array.from(destCol.items);
-
-    const [movedItem] = sourceItems.splice(source.index, 1);
-    destItems.splice(destination.index, 0, movedItem);
-
-    setColumns({
-      ...columns,
-      [source.droppableId]: { ...sourceCol, items: sourceItems },
-      [destination.droppableId]: { ...destCol, items: destItems },
-    });
-  };
-
-  const addTask = () => {
-    if (!newTask.title.trim()) return;
-    setColumns((prev) => ({
-      ...prev,
-      todo: {
-        ...prev.todo,
-        items: [...prev.todo.items, { ...newTask, id: Date.now().toString() }],
-      },
-    }));
-    setNewTask({ title: "", description: "" });
-    setShowModal(false);
-  };
-
-  const deleteTask = (columnId, taskId) => {
-    setColumns((prevColumns) => {
-      const column = prevColumns[columnId];
-      const filteredItems = column.items.filter((item) => item.id !== taskId);
-      return {
-        ...prevColumns,
-        [columnId]: { ...column, items: filteredItems },
-      };
-    });
-  };
-
-  const startEditing = (columnId, task) => {
-    setEditingTask({ columnId, taskId: task.id });
-    setEditingValues({ title: task.title, description: task.description });
-  };
-
-  const saveEditedTask = (columnId, taskId) => {
-    setColumns((prevColumns) => {
-      const column = prevColumns[columnId];
-      const updatedItems = column.items.map((item) => {
-        if (item.id === taskId) {
-          return { ...item, ...editingValues };
-        }
-        return item;
-      });
-      return {
-        ...prevColumns,
-        [columnId]: { ...column, items: updatedItems },
-      };
-    });
-    setEditingTask(null);
-  };
-
+// Bin Dropzone
+function BinDropZone() {
+  const { setNodeRef, isOver } = useDroppable({ id: "bin" });
   return (
-    <div className="h-screen w-screen bg-purple-50 font-sans overflow-x-auto">
-      <div className="relative">
-        <header className="flex justify-between items-center bg-gray-700 text-white px-8 py-6 font-bold text-lg">
-          <span className="text-3xl">TaskFlow</span>
-          <div className="relative inline-block">
-            <button
-              onClick={() => setShowModal(true)}
-              className="text-white font-semibold px-4 py-2 rounded hover:bg-gray-600 transition"
-            >
-              + ADD TASK
-            </button>
-            {showModal && (
-              <div className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-lg p-6 flex flex-col space-y-4 z-50">
-                <input
-                  type="text"
-                  placeholder="Project Name"
-                  className="bg-gray-100 rounded-md p-2 text-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-400"
-                  value={newTask.title}
-                  onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-                />
-                <input
-                  type="text"
-                  placeholder="Description"
-                  className="bg-gray-100 rounded-md p-2 text-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-400"
-                  value={newTask.description}
-                  onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
-                />
-                <div className="flex space-x-3 justify-end">
-                  <button
-                    onClick={addTask}
-                    className="bg-purple-600 text-white px-4 py-2 rounded-md font-semibold hover:bg-purple-700 transition"
-                  >
-                    Add
-                  </button>
-                  <button
-                    onClick={() => setShowModal(false)}
-                    className="bg-gray-200 text-red-600 px-4 py-2 rounded-md font-semibold hover:bg-gray-300 transition"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </header>
-      </div>
-
-      <DragDropContext onDragEnd={onDragEnd}>
-        <div className="flex justify-center items-start gap-8 px-8 py-6 min-h-[calc(100vh-80px)]">
-          {Object.entries(columns).map(([colId, col]) => (
-            <Droppable droppableId={colId} key={colId}>
-              {(provided, snapshot) => (
-                <div
-                  className="bg-gray-700 rounded-xl p-8 min-w-[360px] flex flex-col items-center"
-                  {...provided.droppableProps}
-                  ref={provided.innerRef}
-                >
-                  <h2 className="text-white font-bold text-2xl mb-8">{col.name}</h2>
-                  {col.items.map((item, idx) => (
-                    <Draggable key={item.id} draggableId={item.id} index={idx}>
-                      {(provided, snapshot) => (
-                        <div
-                          className={`bg-gray-600 rounded-lg p-6 mb-6 w-full max-w-[340px] text-white select-none relative flex flex-col ${
-                            snapshot.isDragging ? "shadow-lg opacity-80" : ""
-                          }`}
-                          ref={provided.innerRef}
-                          {...provided.draggableProps}
-                          {...provided.dragHandleProps}
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="flex flex-col w-full">
-                              {editingTask &&
-                              editingTask.taskId === item.id &&
-                              editingTask.columnId === colId ? (
-                                <>
-                                  <input
-                                    className="mb-2 p-1 rounded bg-gray-300 text-black w-full"
-                                    value={editingValues.title}
-                                    onChange={(e) =>
-                                      setEditingValues({ ...editingValues, title: e.target.value })
-                                    }
-                                    onKeyDown={(e) => {
-                                      if (e.key === "Enter") saveEditedTask(colId, item.id);
-                                    }}
-                                    autoFocus
-                                  />
-                                  <input
-                                    className="p-1 rounded bg-gray-300 text-black w-full"
-                                    value={editingValues.description}
-                                    onChange={(e) =>
-                                      setEditingValues({ ...editingValues, description: e.target.value })
-                                    }
-                                    onKeyDown={(e) => {
-                                      if (e.key === "Enter") saveEditedTask(colId, item.id);
-                                    }}
-                                  />
-                                  <div className="flex space-x-2 mt-2">
-                                    <button
-                                      onClick={() => saveEditedTask(colId, item.id)}
-                                      className="bg-purple-600 text-white px-3 py-1 rounded"
-                                    >
-                                      Save
-                                    </button>
-                                    <button
-                                      onClick={() => setEditingTask(null)}
-                                      className="bg-gray-400 text-white px-3 py-1 rounded"
-                                    >
-                                      Cancel
-                                    </button>
-                                  </div>
-                                </>
-                              ) : (
-                                <>
-                                  <strong
-                                    className="block mb-1 text-lg cursor-pointer"
-                                    onClick={() => startEditing(colId, item)}
-                                    title="Click to edit"
-                                  >
-                                    {item.title}
-                                  </strong>
-                                  <span
-                                    className="text-gray-300 text-base cursor-pointer"
-                                    onClick={() => startEditing(colId, item)}
-                                    title="Click to edit"
-                                  >
-                                    {item.description}
-                                  </span>
-                                </>
-                              )}
-                            </div>
-                            <button
-                              onClick={() => deleteTask(colId, item.id)}
-                              className="bg-gray-700 hover:bg-red-600 rounded-md p-1 flex items-center justify-center transition duration-200 ml-4"
-                              aria-label="Delete task"
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="h-4 w-4 text-red-300 hover:text-white"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                                strokeWidth={2}
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  d="M6 7h12M9 7V6a3 3 0 116 0v1M9 7v10a2 2 0 002 2h2a2 2 0 002-2V7"
-                                />
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </Draggable>
-                  ))}
-                  {provided.placeholder}
-                </div>
-              )}
-            </Droppable>
-          ))}
-        </div>
-      </DragDropContext>
+    <div
+      ref={setNodeRef}
+      className={`flex items-center justify-center mt-2 mb-2 mx-auto rounded-full w-24 h-24 bg-gray-300 ${
+        isOver ? "bg-red-500 text-white scale-110" : "hover:bg-gray-400"
+      } transition-all cursor-pointer`}
+      style={{ fontSize: 45 }}
+    >
+      <span role="img" aria-label="Delete">🗑️</span>
     </div>
   );
 }
 
-export default App;
+export default function App() {
+  const [columns, setColumns] = useState({
+    todo: { name: COLUMN_NAMES.todo, items: [] },
+    inProgress: { name: COLUMN_NAMES.inProgress, items: [] },
+    done: { name: COLUMN_NAMES.done, items: [] },
+  });
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [newTask, setNewTask] = useState({ title: "", description: "", priority: "Medium" });
+  const [activeId, setActiveId] = useState(null);
+
+  // Drag start
+  const onDragStart = (event) => {
+    setActiveId(event.active.id);
+  };
+
+  // Drag end
+  const onDragEnd = (event) => {
+    const { active, over } = event;
+    setActiveId(null);
+    if (!over) return;
+
+    // Bin dropzone logic
+    if (over.id === "bin") {
+      handleDeleteTask(active.id);
+      return;
+    }
+
+    // Move/reorder logic as usual
+    const activeId = active.id;
+    const overId = over.id;
+    let fromColId = null;
+    let fromIndex = -1;
+    for (const colId in columns) {
+      const idx = columns[colId].items.findIndex((task) => task.id === activeId);
+      if (idx !== -1) {
+        fromColId = colId;
+        fromIndex = idx;
+        break;
+      }
+    }
+
+    let toColId = null;
+    let toIndex = -1;
+    if (columns[overId]) {
+      toColId = overId;
+      toIndex = columns[overId].items.length;
+    } else {
+      for (const colId in columns) {
+        const idx = columns[colId].items.findIndex((task) => task.id === overId);
+        if (idx !== -1) {
+          toColId = colId;
+          toIndex = idx;
+          break;
+        }
+      }
+    }
+
+    if (!toColId || fromColId === null || fromIndex === -1) return;
+
+    if (fromColId === toColId) {
+      const newItems = arrayMove(columns[fromColId].items, fromIndex, toIndex);
+      setColumns({
+        ...columns,
+        [fromColId]: { ...columns[fromColId], items: newItems },
+      });
+    } else {
+      const fromItems = [...columns[fromColId].items];
+      const [movedTask] = fromItems.splice(fromIndex, 1);
+      const toItems = [...columns[toColId].items];
+      toItems.splice(toIndex, 0, movedTask);
+      setColumns({
+        ...columns,
+        [fromColId]: { ...columns[fromColId], items: fromItems },
+        [toColId]: { ...columns[toColId], items: toItems },
+      });
+    }
+  };
+
+  const onDragCancel = () => {
+    setActiveId(null);
+  };
+
+  function DroppableColumn({ id, children, className }) {
+    const { setNodeRef, isOver } = useDroppable({ id });
+    return (
+      <div
+        ref={setNodeRef}
+        className={`${className} ${isOver ? "ring-2 ring-blue-500" : ""}`}
+      >
+        {children}
+      </div>
+    );
+  }
+
+  // Add Task handler
+  const handleAddTask = () => {
+    const { title, description, priority } = newTask;
+    if (!title.trim() || !description.trim()) return;
+    const task = {
+      id: uuidv4(),
+      title,
+      description,
+      priority,
+    };
+    setColumns((prev) => ({
+      ...prev,
+      todo: {
+        ...prev.todo,
+        items: [...prev.todo.items, task],
+      },
+    }));
+    setNewTask({ title: "", description: "", priority: "Medium" });
+    setIsModalOpen(false);
+  };
+
+  // Delete Task handler
+  const handleDeleteTask = (taskId) => {
+    setColumns((prevColumns) => {
+      const updated = {};
+      for (const colId in prevColumns) {
+        updated[colId] = {
+          ...prevColumns[colId],
+          items: prevColumns[colId].items.filter((task) => task.id !== taskId),
+        };
+      }
+      return { ...updated };
+    });
+  };
+
+  const getPriorityColor = (priority) => {
+    switch (priority) {
+      case "High":
+        return "bg-red-500 text-white";
+      case "Medium":
+        return "bg-yellow-500 text-black";
+      case "Low":
+        return "bg-green-500 text-white";
+      default:
+        return "bg-gray-400 text-white";
+    }
+  };
+
+  return (
+    <div className="h-screen w-screen flex flex-col">
+      {/* HEADER */}
+      <div className="flex items-center justify-between px-8 py-8 bg-gray-900">
+        <h1 className="text-4xl font-extrabold text-white tracking-wide">TaskFlow</h1>
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="px-5 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition"
+        >
+          + Add Task
+        </button>
+      </div>
+      {/* BIN */}
+      <DndContext
+        collisionDetection={closestCenter}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        onDragCancel={onDragCancel}
+      >
+        <BinDropZone />
+        {/* BOARD */}
+        <div className="flex-1 flex gap-5 p-8 bg-gray-100 overflow-x-auto">
+          {Object.entries(columns).map(([colId, col]) => (
+            <DroppableColumn
+              key={colId}
+              id={colId}
+              className="flex-1 flex flex-col bg-white rounded-2xl shadow-lg p-4 min-w-[260px]"
+            >
+              <div className={`rounded-xl px-4 py-2 text-white font-bold text-lg mb-4 ${COLUMN_COLORS[colId]}`}>
+                {col.name}
+              </div>
+              <SortableContext items={col.items.map((task) => task.id)} strategy={rectSortingStrategy}>
+                <div className="flex-1 overflow-y-auto">
+                  {col.items.map((task) => (
+                    <SortableItem key={task.id} id={task.id}>
+                      <div className="bg-gray-50 rounded-lg p-3 mb-3 shadow flex flex-col">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold">{task.title}</span>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`px-2 py-1 rounded text-xs font-semibold ${getPriorityColor(
+                                task.priority
+                              )}`}
+                            >
+                              {task.priority}
+                            </span>
+                          </div>
+                        </div>
+                        <p className="text-sm text-gray-700 mt-1">{task.description}</p>
+                      </div>
+                    </SortableItem>
+                  ))}
+                </div>
+              </SortableContext>
+            </DroppableColumn>
+          ))}
+          <DragOverlay>
+            {activeId ? (() => {
+              let activeTask = null;
+              for (const col of Object.values(columns)) {
+                activeTask = col.items.find((item) => item.id === activeId);
+                if (activeTask) break;
+              }
+              if (!activeTask) return null;
+              return (
+                <div className="bg-gray-50 rounded-lg p-3 shadow flex flex-col" style={{ width: 260 }}>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold">{activeTask.title}</span>
+                    <span
+                      className={`ml-2 px-2 py-1 rounded text-xs font-semibold ${getPriorityColor(
+                        activeTask.priority
+                      )}`}
+                    >
+                      {activeTask.priority}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-700 mt-1">{activeTask.description}</p>
+                </div>
+              );
+            })() : null}
+          </DragOverlay>
+        </div>
+      </DndContext>
+      {/* MODAL */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-30 bg-black/60 flex items-center justify-center">
+          <div className="bg-white rounded-2xl shadow-xl p-8 w-[350px]">
+            <h2 className="text-2xl font-bold mb-3">Add New Task</h2>
+            {/* TITLE */}
+            <label className="block text-sm font-medium mb-1">Title</label>
+            <input
+              className="w-full mb-3 px-3 py-2 border border-gray-300 rounded-lg"
+              type="text"
+              value={newTask.title}
+              onChange={(e) => setNewTask((t) => ({ ...t, title: e.target.value }))}
+              placeholder="Task title"
+            />
+            {/* DESCRIPTION */}
+            <label className="block text-sm font-medium mb-1">Description</label>
+            <textarea
+              className="w-full mb-3 px-3 py-2 border border-gray-300 rounded-lg resize-none"
+              rows={3}
+              value={newTask.description}
+              onChange={(e) => setNewTask((t) => ({ ...t, description: e.target.value }))}
+              placeholder="Task description"
+            />
+            {/* PRIORITY */}
+            <label className="block text-sm font-medium mb-1">Priority</label>
+            <select
+              className="w-full mb-5 px-3 py-2 border border-gray-300 rounded-lg"
+              value={newTask.priority}
+              onChange={(e) => setNewTask((t) => ({ ...t, priority: e.target.value }))}
+            >
+              <option value="Low">Low</option>
+              <option value="Medium">Medium</option>
+              <option value="High">High</option>
+            </select>
+            {/* BUTTONS */}
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 rounded-lg bg-gray-200">
+                Cancel
+              </button>
+              <button onClick={handleAddTask} className="px-4 py-2 rounded-lg bg-blue-600 text-white">
+                Add
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
